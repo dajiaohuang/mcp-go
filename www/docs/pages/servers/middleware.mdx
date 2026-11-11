@@ -114,34 +114,28 @@ func authMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 
 ### Rate-Limiting Middleware
 
-Limit the number of tool calls per session. This example uses [`golang.org/x/time/rate`](https://pkg.go.dev/golang.org/x/time/rate) and `server.GetSessionID()` to identify the caller:
+`WithRateLimit` installs a token-bucket limit per client session. Calls without a client session share one bucket. An optional global limit caps calls across all sessions:
 
 ```go
-type rateLimiter struct {
-    limiters sync.Map
-    rate     rate.Limit
-    burst    int
-}
+import (
+    "golang.org/x/time/rate"
 
-func newRateLimiter(rps float64, burst int) *rateLimiter {
-    return &rateLimiter{rate: rate.Limit(rps), burst: burst}
-}
+    "github.com/mark3labs/mcp-go/server"
+)
 
-func (r *rateLimiter) middleware(next server.ToolHandlerFunc) server.ToolHandlerFunc {
-    return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        sessionID := server.GetSessionID(ctx)
-        limiter, _ := r.limiters.LoadOrStore(sessionID, rate.NewLimiter(r.rate, r.burst))
-        if !limiter.(*rate.Limiter).Allow() {
-            return nil, fmt.Errorf("rate limit exceeded")
-        }
-        return next(ctx, req)
-    }
-}
-
-// Usage
-rl := newRateLimiter(10, 20)
-s.Use(rl.middleware)
+s := server.NewMCPServer("my-server", "1.0.0",
+    server.WithRateLimit(server.RateLimitOpts{
+        PerSessionRPS:   rate.Limit(10),
+        PerSessionBurst: 20,
+        GlobalRPS:       rate.Limit(100), // optional
+        GlobalBurst:     200,             // set both global values, or leave both zero
+    }),
+)
 ```
+
+The default denial is a tool result with `isError: true`. Use `KeyFunc` to group calls by an authenticated tenant or user instead of the MCP session ID, and `OnDeny` to return an application-specific denial result. Idle session buckets are removed after the configured `StaleTTL` (10 minutes by default); `ReapInterval` controls how often they are checked (5 minutes by default).
+
+This middleware limits regular tool-handler calls. It does not limit HTTP requests or cover resource, prompt, and native task-tool handlers. Apply network-wide authentication and rate limits at the transport layer.
 
 ## Execution Order
 

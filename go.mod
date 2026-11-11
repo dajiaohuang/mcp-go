@@ -11,6 +11,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/yosida95/uritemplate/v3 v3.0.2
 	golang.org/x/text v0.14.0
+	golang.org/x/time v0.12.0
 )
 
 require (
